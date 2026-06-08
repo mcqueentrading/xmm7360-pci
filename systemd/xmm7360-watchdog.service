@@ -1,0 +1,9 @@
+[Unit]
+Description=XMM7360 modem watchdog recovery
+After=network-online.target ModemManager.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/xmm7360-watchdog.sh
+

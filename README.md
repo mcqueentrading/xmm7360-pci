@@ -194,6 +194,15 @@ If ModemManager ever drops the modem after a disconnect, the
 `xmm7360-rescan.service` re-scans it automatically; `sudo xmm7360-reset`
 forces a full module reload as a last resort.
 
+On systems where S3/S4 resume races ModemManager or NetworkManager, see
+[`docs/S4_RESUME_DEBUG.md`](docs/S4_RESUME_DEBUG.md). This repo includes a
+watchdog wrapper that skips suspend/hibernate windows and an installer that
+disables the conflicting post-resume unit used by older local setups:
+
+```bash
+bash scripts/install-s4-resume-fixes.sh
+```
+
 ---
 
 ## Project layout

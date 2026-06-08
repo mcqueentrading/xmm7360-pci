@@ -1,0 +1,12 @@
+[Unit]
+Description=Run XMM7360 watchdog periodically
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+Unit=xmm7360-watchdog.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

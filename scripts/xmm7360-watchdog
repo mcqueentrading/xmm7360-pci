@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONN_NAME="${XMM7360_CONN_NAME:-lebara}"
+LOG_TAG="xmm7360-watchdog"
+
+log() {
+  logger -t "$LOG_TAG" "$*"
+}
+
+sleep_jobs_active() {
+  systemctl list-jobs --no-legend 2>/dev/null | grep -Eiq 'suspend|hibernate|sleep'
+}
+
+if sleep_jobs_active; then
+  log "Sleep/resume job active; skipping watchdog"
+  exit 0
+fi
+
+if ! mmcli -L | grep -q '/Modem/'; then
+  log "No modem detected; scanning"
+  mmcli --scan-modems || true
+  sleep 2
+fi
+
+if sleep_jobs_active; then
+  log "Sleep/resume job active after scan; skipping watchdog"
+  exit 0
+fi
+
+if ! mmcli -L | grep -q '/Modem/'; then
+  log "Still no modem after scan; restarting ModemManager"
+  systemctl restart ModemManager || true
+  sleep 4
+  mmcli --scan-modems || true
+  sleep 2
+fi
+
+if mmcli -L | grep -q '/Modem/'; then
+  if ! nmcli -t -f NAME connection show | grep -Fxq "$CONN_NAME"; then
+    log "Configured GSM profile does not exist: ${CONN_NAME}"
+    exit 0
+  fi
+
+  if ! nmcli -t -f NAME,TYPE,DEVICE connection show --active | grep -Fq "${CONN_NAME}:gsm:"; then
+    log "GSM profile inactive; bringing up ${CONN_NAME}"
+    nmcli connection up "$CONN_NAME" || true
+  fi
+fi
