@@ -12,6 +12,22 @@ sleep_jobs_active() {
   systemctl list-jobs --no-legend 2>/dev/null | grep -Eiq 'suspend|hibernate|sleep'
 }
 
+ppp_session_healthy() {
+  ip link show ppp0 >/dev/null 2>&1 || return 1
+  ip -4 addr show dev ppp0 2>/dev/null | grep -q 'inet ' || return 1
+  return 0
+}
+
+ppp_route_present() {
+  ip route show dev ppp0 2>/dev/null | grep -q '^default\|^10\.' || return 0
+  ip route show default 2>/dev/null | grep -q ' dev ppp0\>' || return 0
+  return 1
+}
+
+active_gsm_session_present() {
+  nmcli -t -f TYPE,DEVICE connection show --active 2>/dev/null | grep -Eq '^gsm:|:ppp0$'
+}
+
 if sleep_jobs_active; then
   log "Sleep/resume job active; skipping watchdog"
   exit 0
@@ -28,6 +44,13 @@ if sleep_jobs_active; then
   exit 0
 fi
 
+# If the PPP session is already alive, the watchdog must not keep prodding NM/MM.
+# The new kernel still brings the modem up; the noisy failures were coming from
+# this script repeatedly trying to "recover" a healthy connection.
+if ppp_session_healthy && ppp_route_present; then
+  exit 0
+fi
+
 if ! mmcli -L | grep -q '/Modem/'; then
   log "Still no modem after scan; restarting ModemManager"
   systemctl restart ModemManager || true
@@ -37,6 +60,10 @@ if ! mmcli -L | grep -q '/Modem/'; then
 fi
 
 if mmcli -L | grep -q '/Modem/'; then
+  if active_gsm_session_present; then
+    exit 0
+  fi
+
   if ! nmcli -t -f NAME connection show | grep -Fxq "$CONN_NAME"; then
     log "Configured GSM profile does not exist: ${CONN_NAME}"
     exit 0
