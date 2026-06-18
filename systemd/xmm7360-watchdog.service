@@ -5,5 +5,4 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/xmm7360-watchdog.sh
-
+ExecStart=/usr/lib/xmm7360/xmm7360-watchdog

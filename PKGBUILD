@@ -62,6 +62,10 @@ package() {
     install -Dm755 "$_src/scripts/xmm7360-reset" \
         "${pkgdir}/usr/bin/xmm7360-reset"
 
+    # Connection-aware watchdog used after resume and as a periodic health check.
+    install -Dm755 "$_src/scripts/xmm7360-watchdog" \
+        "${pkgdir}/usr/lib/xmm7360/xmm7360-watchdog"
+
     # Pre-sleep hook: disconnect the modem before S3/S4 so suspend
     # always happens from the idle state (active-connection suspend
     # faults on resume — live DMA rings do not survive power cycle).
@@ -84,6 +88,10 @@ package() {
         "${pkgdir}/usr/lib/systemd/system/xmm7360-signal.service"
     install -Dm644 "$_src/systemd/xmm7360-rescan.service" \
         "${pkgdir}/usr/lib/systemd/system/xmm7360-rescan.service"
+    install -Dm644 "$_src/systemd/xmm7360-watchdog.service" \
+        "${pkgdir}/usr/lib/systemd/system/xmm7360-watchdog.service"
+    install -Dm644 "$_src/systemd/xmm7360-watchdog.timer" \
+        "${pkgdir}/usr/lib/systemd/system/xmm7360-watchdog.timer"
 
     # ── Last-resort module reload (triggered by kernel uevent) ───────────
     install -Dm644 "$_src/systemd/xmm7360-recovery.service" \

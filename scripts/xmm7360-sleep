@@ -78,6 +78,10 @@ case "$phase" in
         for s in $HELPERS; do
             timeout 10 systemctl start "$s" 2>/dev/null || true
         done
+        # Run one immediate health pass after resume instead of waiting for the
+        # periodic timer. The watchdog is now conservative on healthy links, so
+        # this is cheap when resume succeeded and fast when resume did not.
+        timeout 20 systemctl start xmm7360-watchdog.service 2>/dev/null || true
         ;;
 esac
 exit 0
