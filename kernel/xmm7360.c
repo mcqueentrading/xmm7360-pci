@@ -79,6 +79,7 @@ MODULE_DEVICE_TABLE(pci, xmm7360_ids);
 static dev_t xmm_base;
 
 static struct tty_driver *xmm7360_tty_driver;
+static bool xmm7360_hibernate_unbind;
 
 /*
  * The XMM7360 communicates via DMA ring buffers. It has one
@@ -1485,17 +1486,34 @@ static void xmm7360_dev_deinit(struct xmm_dev *xmm)
 		}
 		if (qp->port.ops) {
 			/*
-			 * Hang up any open tty (wakes ModemManager/pppd blocked
+			 * Normal runtime/remove path:
+			 * hang up any open tty (wakes ModemManager/pppd blocked
 			 * in read), unregister the node, then tty_port_put()
 			 * drops the port's init reference. If a tty is still
 			 * open the port (and via .destruct, our xmm ref) survives
 			 * until that fd's tty_release completes -- so the close
 			 * path never touches freed memory.
+			 *
+			 * Hibernation-unbind path:
+			 * the last warning during S4 landed exactly on
+			 * tty_port_put() from systemd-sleep context. For S4 we
+			 * are intentionally doing a hard pre-image unbind and a
+			 * clean cold-boot reprobe after resume, so use the
+			 * simpler upstream-style port destroy instead of the
+			 * refcount-preserving put path here.
 			 */
-			tty_port_tty_hangup(&qp->port, false);
-			tty_unregister_device(xmm7360_tty_driver, qp->tty_index);
-			qp->port.ops = NULL;
-			tty_port_put(&qp->port);
+			if (READ_ONCE(xmm7360_hibernate_unbind)) {
+				tty_unregister_device(xmm7360_tty_driver,
+						      qp->tty_index);
+				tty_port_destroy(&qp->port);
+				qp->port.ops = NULL;
+			} else {
+				tty_port_tty_hangup(&qp->port, false);
+				tty_unregister_device(xmm7360_tty_driver,
+						      qp->tty_index);
+				qp->port.ops = NULL;
+				tty_port_put(&qp->port);
+			}
 		}
 		/*
 		 * Mark the slot free for any in-place rebuild, but DO NOT
@@ -2318,6 +2336,7 @@ static int xmm7360_pm_notify(struct notifier_block *nb, unsigned long mode,
 		 * causing a NULL-deref / use-after-free wedge.
 		 */
 		if (xmm7360_pci_registered) {
+			WRITE_ONCE(xmm7360_hibernate_unbind, true);
 			pci_unregister_driver(&xmm7360_driver);
 			xmm7360_pci_registered = false;
 		}
@@ -2331,6 +2350,7 @@ static int xmm7360_pm_notify(struct notifier_block *nb, unsigned long mode,
 			else
 				pr_err("xmm7360: failed to re-register after resume\n");
 		}
+		WRITE_ONCE(xmm7360_hibernate_unbind, false);
 		break;
 	default:
 		break;
