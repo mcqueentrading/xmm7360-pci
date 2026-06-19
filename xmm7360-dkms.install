@@ -18,7 +18,6 @@ post_install() {
     systemctl daemon-reload
     systemctl enable xmm7360-init.service
     systemctl enable xmm7360-signal.service
-    systemctl enable --now xmm7360-rescan.service
     systemctl enable --now xmm7360-watchdog.timer
 
     echo ""
@@ -37,6 +36,8 @@ post_upgrade() {
 
     systemctl daemon-reload
     systemctl restart xmm7360-init.service 2>/dev/null || true
+    systemctl disable xmm7360-rescan.service 2>/dev/null || true
+    systemctl stop xmm7360-rescan.service 2>/dev/null || true
     systemctl restart xmm7360-watchdog.timer 2>/dev/null || true
 }
 

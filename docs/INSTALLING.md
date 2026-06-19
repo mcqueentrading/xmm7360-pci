@@ -47,7 +47,7 @@ sudoedit /etc/xmm7360.conf      # XMM_APN=your.carrier.apn
 | ------------------------- | --------------- | ---------------------------------------------------------- |
 | `xmm7360-init.service`    | boot, before MM | RPC wake (SIM open, RF on) so ModemManager can detect it   |
 | `xmm7360-signal.service`  | boot, after MM  | enable periodic signal-quality reporting                   |
-| `xmm7360-rescan.service`  | boot (polls)    | re-scan if ModemManager drops the modem after a disconnect |
+| `xmm7360-rescan.service`  | manual fallback | conservative modem re-scan helper; not enabled by default on fragile systems |
 | `xmm7360-recovery.service`| udev-triggered  | reload the module if the kernel reports an unrecoverable failure |
 
 A manual escape hatch is also installed:
@@ -150,9 +150,10 @@ DKMS will then sign `xmm7360.ko` automatically on every (re)build.
 
 ## Troubleshooting
 
-- **Modem absent after a disconnect/reconnect** — the `xmm7360-rescan` service
-  should re-scan within ~10 s. Force it manually with `sudo mmcli -S` (wait a
-  few seconds, then `mmcli -L`), or `sudo xmm7360-reset` for a full reload.
+- **Modem absent after a disconnect/reconnect** — first force a manual scan
+  with `sudo mmcli -S` (wait a few seconds, then `mmcli -L`), or use
+  `sudo xmm7360-reset` for a full reload. The packaged `xmm7360-rescan.service`
+  is now treated as a conservative fallback and is not enabled by default.
 - **Package seems updated but live rescan behavior is still too aggressive** —
   check whether an older manual unit is shadowing the packaged one:
   `systemctl cat xmm7360-rescan.service`. If the loaded file comes from
