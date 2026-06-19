@@ -18,6 +18,7 @@
 # systemd calls this as:  xmm7360 {pre|post} {suspend|hibernate|...}
 
 phase="$1"
+action="${2:-}"
 log() { logger -t xmm7360-sleep "$*"; }
 
 HELPERS="xmm7360-rescan.service xmm7360-init.service xmm7360-signal.service"
@@ -29,7 +30,7 @@ holders() {  # list PIDs holding any modem device open
 
 case "$phase" in
     pre)
-        log "pre-sleep: quiescing modem before kernel unbind"
+        log "pre-sleep: quiescing modem before sleep action=$action"
 
         # 1. Stop our helpers FIRST so nothing re-opens the modem behind us.
         for s in $HELPERS; do
@@ -69,11 +70,38 @@ case "$phase" in
             kill -KILL $h 2>/dev/null || true
             sleep 1
         fi
+        if [ "$action" = "hibernate" ]; then
+            if lsmod | grep -q '^xmm7360'; then
+                log "pre-hibernate: unloading xmm7360 module to avoid kernel S4 panic path"
+                if ! timeout 10 modprobe -r xmm7360 2>/dev/null; then
+                    log "pre-hibernate: direct unload failed, forcing remaining holders closed"
+                    fuser -k -9 /dev/ttyXMM* 2>/dev/null || true
+                    fuser -k -9 /dev/xmm0/* 2>/dev/null || true
+                    sleep 1
+                    timeout 10 modprobe -r xmm7360 2>/dev/null || {
+                        log "pre-hibernate: ERROR failed to unload xmm7360"
+                        exit 1
+                    }
+                fi
+                log "pre-hibernate: xmm7360 unloaded"
+            else
+                log "pre-hibernate: xmm7360 already unloaded"
+            fi
+        fi
+
         log "pre-sleep: modem device released, safe to suspend"
         ;;
 
     post)
-        log "post-resume: restoring helpers + ModemManager"
+        log "post-resume: restoring helpers + ModemManager action=$action"
+        if [ "$action" = "hibernate" ]; then
+            if ! lsmod | grep -q '^xmm7360'; then
+                log "post-hibernate: reloading xmm7360 module"
+                timeout 10 modprobe xmm7360 2>/dev/null || \
+                    log "post-hibernate: modprobe xmm7360 failed"
+                udevadm settle 2>/dev/null || true
+            fi
+        fi
         timeout 15 systemctl start ModemManager 2>/dev/null || true
         for s in $HELPERS; do
             timeout 10 systemctl start "$s" 2>/dev/null || true
