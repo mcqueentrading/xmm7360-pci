@@ -153,6 +153,12 @@ DKMS will then sign `xmm7360.ko` automatically on every (re)build.
 - **Modem absent after a disconnect/reconnect** — the `xmm7360-rescan` service
   should re-scan within ~10 s. Force it manually with `sudo mmcli -S` (wait a
   few seconds, then `mmcli -L`), or `sudo xmm7360-reset` for a full reload.
+- **Package seems updated but live rescan behavior is still too aggressive** —
+  check whether an older manual unit is shadowing the packaged one:
+  `systemctl cat xmm7360-rescan.service`. If the loaded file comes from
+  `/etc/systemd/system/xmm7360-rescan.service` instead of
+  `/usr/lib/systemd/system/xmm7360-rescan.service`, remove the stale `/etc`
+  copy and reload systemd so the packaged unit wins.
 - **`iosm` keeps grabbing the device** — confirm the blacklist landed:
   `cat /usr/lib/modprobe.d/xmm7360.conf` and reboot.
 - **No signal / FCC-locked** — some units ship FCC-locked. Check

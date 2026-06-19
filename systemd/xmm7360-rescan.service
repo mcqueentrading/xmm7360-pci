@@ -6,7 +6,7 @@ Wants=ModemManager.service
 [Service]
 Type=simple
 Restart=always
-RestartSec=5
+RestartSec=20
 
 # Shut down fast: the poll loop must not drag the shutdown countdown.
 # Without this, Type=simple waits the default ~90s for the loop to exit.
@@ -14,28 +14,49 @@ TimeoutStopSec=5
 KillMode=mixed
 KillSignal=SIGTERM
 
-# Poll for modem presence. If MM has lost the XMM7360 (but the kernel device
-# is still alive — /dev/xmm0/rpc present), request a rescan. Pure userspace:
-# only ever calls `mmcli -S`, never touches the kernel module, so it cannot
-# freeze the system.
+# Poll for modem presence conservatively. The older loop re-scanned too often
+# and could collide with ModemManager while it was still probing ttyXMM ports,
+# which pushed fragile modem states into repeated failure/reprobe cycles.
+# This path should only help when the modem has truly disappeared for a while.
 ExecStart=/bin/sh -c 'exec 0<&-; \
     miss=0; \
+    cooldown_until=0; \
     while :; do \
-        if [ -e /dev/xmm0/rpc ] && ! timeout 5 mmcli -L 2>/dev/null | grep -q "/Modem/"; then \
-            miss=$((miss+1)); \
-            if [ "$miss" -ge 2 ]; then \
-                logger -t xmm7360-rescan "modem missing — requesting MM rescan"; \
-                timeout 10 mmcli -S 2>/dev/null || true; \
-                sleep 8; \
-                if timeout 5 mmcli -L 2>/dev/null | grep -q "/Modem/"; then \
-                    logger -t xmm7360-rescan "modem reappeared after rescan"; \
-                fi; \
-                miss=0; \
+        if ip link show ppp0 >/dev/null 2>&1 && \
+           ip -4 addr show dev ppp0 2>/dev/null | grep -q "inet "; then \
+            miss=0; \
+            sleep 15; \
+            continue; \
+        fi; \
+        if nmcli -t -f TYPE,DEVICE connection show --active 2>/dev/null | \
+           grep -Eq "^gsm:|:ppp0$"; then \
+            miss=0; \
+            sleep 15; \
+            continue; \
+        fi; \
+        if [ ! -e /dev/xmm0/rpc ]; then \
+            miss=0; \
+            sleep 15; \
+            continue; \
+        fi; \
+        if timeout 5 mmcli -L 2>/dev/null | grep -q "/Modem/"; then \
+            miss=0; \
+            sleep 15; \
+            continue; \
+        fi; \
+        miss=$((miss+1)); \
+        now=$(date +%s); \
+        if [ "$miss" -ge 8 ] && [ "$now" -ge "$cooldown_until" ]; then \
+            logger -t xmm7360-rescan "modem absent for a sustained window — requesting one MM rescan"; \
+            timeout 10 mmcli -S 2>/dev/null || true; \
+            cooldown_until=$((now + 180)); \
+            sleep 20; \
+            if timeout 5 mmcli -L 2>/dev/null | grep -q "/Modem/"; then \
+                logger -t xmm7360-rescan "modem reappeared after conservative rescan"; \
             fi; \
-        else \
             miss=0; \
         fi; \
-        sleep 5; \
+        sleep 15; \
     done'
 
 StandardOutput=journal
